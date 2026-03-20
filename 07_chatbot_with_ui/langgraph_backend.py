@@ -1,9 +1,9 @@
 from langgraph.graph import StateGraph, START, END
 from langchain_mistralai import ChatMistralAI
-from typing import TypedDict, Literal, Annotated
+from typing import TypedDict, Annotated
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-from langchain_core.messages import SystemMessage, HumanMessage, BaseMessage
+
+from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 
