@@ -7,11 +7,13 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
+import os 
+
 
 import sqlite3
 
 load_dotenv()
-
+os.environ['LANGCHAIN_PROJECT'] = "LangGraph-Chatbot"
 llm = ChatMistralAI(model="mistral-small-latest")
 
 
