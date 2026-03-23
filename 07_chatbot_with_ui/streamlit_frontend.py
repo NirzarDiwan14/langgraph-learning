@@ -1,19 +1,20 @@
-import streamlit as st
-from langgraph_backend import chatbot, retrieve_all_threads
-from langchain_core.messages import AIMessage, HumanMessage,ToolMessage
+import queue
 import uuid
-from uuid import UUID
+
+import streamlit as st
+from langgraph_backend import chatbot, retrieve_all_threads, submit_async_task
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 
-# utility functions
-def generate_thread_id() -> UUID:
-    thread_id = uuid.uuid4()
-    return thread_id
+# =========================== Utilities ===========================
+def generate_thread_id():
+    return uuid.uuid4()
 
 
 def reset_chat():
     thread_id = generate_thread_id()
     st.session_state["thread_id"] = thread_id
+    add_thread(thread_id)
     st.session_state["message_history"] = []
 
 
@@ -23,17 +24,12 @@ def add_thread(thread_id):
 
 
 def load_conversation(thread_id):
-    return chatbot.get_state(config={"configurable": {"thread_id": thread_id}}).values[
-        "messages"
-    ]
-
-
-def get_thread_title(thread_id):
     state = chatbot.get_state(config={"configurable": {"thread_id": thread_id}})
-    return state.values.get("title", "New Chat")
+    # Check if messages key exists in state values, return empty list if not
+    return state.values.get("messages", [])
 
 
-# Session Setup
+# ======================= Session Initialization ===================
 if "message_history" not in st.session_state:
     st.session_state["message_history"] = []
 
@@ -45,86 +41,103 @@ if "chat_threads" not in st.session_state:
 
 add_thread(st.session_state["thread_id"])
 
-# Sidebar UI
-st.sidebar.title("LangGraph Chatbot")
+# ============================ Sidebar ============================
+st.sidebar.title("LangGraph MCP Chatbot")
+
 if st.sidebar.button("New Chat"):
     reset_chat()
-    add_thread(st.session_state["thread_id"])
-st.sidebar.header("My Conversations")
 
-# st.sidebar.text(st.session_state["thread_id"])
-for thread_id in reversed(st.session_state["chat_threads"]):
-    title = get_thread_title(thread_id)
-    if st.sidebar.button(title, key=str(thread_id)):
+st.sidebar.header("My Conversations")
+for thread_id in st.session_state["chat_threads"][::-1]:
+    if st.sidebar.button(str(thread_id)):
         st.session_state["thread_id"] = thread_id
         messages = load_conversation(thread_id)
 
         temp_messages = []
         for msg in messages:
-            if isinstance(msg, HumanMessage):
-                role = "user"
-            else:
-                role = "assistant"
+            role = "user" if isinstance(msg, HumanMessage) else "assistant"
             temp_messages.append({"role": role, "content": msg.content})
         st.session_state["message_history"] = temp_messages
 
+# ============================ Main UI ============================
 
+# Render history
 for message in st.session_state["message_history"]:
     with st.chat_message(message["role"]):
         st.text(message["content"])
 
-user_input = st.chat_input("Type here:")
-CONFIG = {
-    "configurable": {"thread_id": st.session_state["thread_id"]},
-    "metadata": {"thread_id": st.session_state["thread_id"]},
-    "run_name": "chat_turn",
-}
+user_input = st.chat_input("Type here")
 
 if user_input:
-    # first add the user message to history
+    # Show user's message
     st.session_state["message_history"].append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.text(user_input)
-    # first add the assitant message to history
-    initial_state = {"messages": [HumanMessage(content=user_input)]}
-    # first add the message to message_history
+
+    CONFIG = {
+        "configurable": {"thread_id": st.session_state["thread_id"]},
+        "metadata": {"thread_id": st.session_state["thread_id"]},
+        "run_name": "chat_turn",
+    }
+
+    # Assistant streaming block
     with st.chat_message("assistant"):
-       status_holder = {"box": None}
+        # Use a mutable holder so the generator can set/modify it
+        status_holder = {"box": None}
 
-    def stream_wrapper():
-        for message_chunk, metadata in chatbot.stream(
-            initial_state,
-            config=CONFIG,
-            stream_mode="messages"
-        ):
-            if isinstance(message_chunk, ToolMessage):
-                tool_name = getattr(message_chunk, "name", "tool")
+        def ai_only_stream():
+            event_queue: queue.Queue = queue.Queue()
 
-                if status_holder["box"] is None:
-                    status_holder["box"] = st.status(
-                        f"🔧 Using `{tool_name}` ...", expanded=True
-                    )
-                else:
-                    status_holder["box"].update(
-                        label=f"🔧 Using `{tool_name}` ...",
-                        state="running",
-                        expanded=True,
-                    )
-                status_holder["box"].write(message_chunk.content)
-            if isinstance(message_chunk, AIMessage):
-                yield message_chunk.content
+            async def run_stream():
+                try:
+                    async for message_chunk, metadata in chatbot.astream(
+                        {"messages": [HumanMessage(content=user_input)]},
+                        config=CONFIG,
+                        stream_mode="messages",
+                    ):
+                        event_queue.put((message_chunk, metadata))
+                except Exception as exc:
+                    event_queue.put(("error", exc))
+                finally:
+                    event_queue.put(None)
 
+            submit_async_task(run_stream())
 
-    ai_message = st.write_stream(stream_wrapper())
+            while True:
+                item = event_queue.get()
+                if item is None:
+                    break
+                message_chunk, metadata = item
+                if message_chunk == "error":
+                    raise metadata
 
-    # ✅ finalize status
-    if status_holder["box"] is not None:
-        status_holder["box"].update(
-            label="✅ Tool finished",
-            state="complete",
-            expanded=False
-        )
-    #Save assistant state
+                # Lazily create & update the SAME status container when any tool runs
+                if isinstance(message_chunk, ToolMessage):
+                    tool_name = getattr(message_chunk, "name", "tool")
+                    if status_holder["box"] is None:
+                        status_holder["box"] = st.status(
+                            f"🔧 Using `{tool_name}` …", expanded=True
+                        )
+                    else:
+                        status_holder["box"].update(
+                            label=f"🔧 Using `{tool_name}` …",
+                            state="running",
+                            expanded=True,
+                        )
+
+                # Stream ONLY assistant tokens
+                if isinstance(message_chunk, AIMessage):
+                    yield message_chunk.content
+
+        ai_message = st.write_stream(ai_only_stream())
+
+        # Finalize only if a tool was actually used
+        if status_holder["box"] is not None:
+            status_holder["box"].update(
+                label="✅ Tool finished", state="complete", expanded=False
+            )
+
+    # Save assistant message
     st.session_state["message_history"].append(
         {"role": "assistant", "content": ai_message}
     )

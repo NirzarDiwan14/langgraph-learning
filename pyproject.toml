@@ -7,10 +7,12 @@ requires-python = ">=3.11"
 dependencies = [
     "ddgs>=9.11.4",
     "faiss-cpu>=1.13.2",
+    "fastmcp>=3.1.1",
     "ipykernel>=7.2.0",
     "langchain>=1.2.12",
     "langchain-community>=0.4.1",
     "langchain-core>=1.2.19",
+    "langchain-mcp-adapters>=0.2.2",
     "langchain-mistralai>=1.1.2",
     "langchain-text-splitters>=1.1.1",
     "langgraph>=1.1.2",
