@@ -15,16 +15,36 @@ llm = ChatMistralAI(model="mistral-small-latest")
 # State of workflow
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
+    title: str
 
 
 # node functions
 def chat_node(state: ChatState) -> ChatState:
     # take user query from the state
     messages = state["messages"]
+    title = state.get("title")
+    if not title: 
+        first_user_msg = messages[0].content
+        title_prompt = f"""
+Generate a concise and descriptive title (3–5 words) that captures the main topic of this conversation.
+
+Text:
+{first_user_msg}
+
+Rules:
+- Use only plain text
+- No quotes, punctuation, or extra symbols
+- No explanations or additional output
+- Return exactly one title
+
+Title:
+"""
+        title_response = llm.invoke(title_prompt)
+        title = title_response.content.strip()
 
     # Send it to LLM
     response = llm.invoke(messages)
-    return {"messages": [response]}
+    return {"messages": [response],"title": title}
 
 
 # Defining Graph with State

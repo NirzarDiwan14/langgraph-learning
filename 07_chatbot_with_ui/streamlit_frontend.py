@@ -28,6 +28,11 @@ def load_conversation(thread_id):
     ]
 
 
+def get_thread_title(thread_id):
+    state = chatbot.get_state(config={"configurable": {"thread_id": thread_id}})
+    return state.values.get("title", "New Chat")
+
+
 # Session Setup
 if "message_history" not in st.session_state:
     st.session_state["message_history"] = []
@@ -43,13 +48,14 @@ add_thread(st.session_state["thread_id"])
 # Sidebar UI
 st.sidebar.title("LangGraph Chatbot")
 if st.sidebar.button("New Chat"):
-    add_thread(st.session_state["thread_id"])
     reset_chat()
+    add_thread(st.session_state["thread_id"])
 st.sidebar.header("My Conversations")
 
 # st.sidebar.text(st.session_state["thread_id"])
 for thread_id in reversed(st.session_state["chat_threads"]):
-    if st.sidebar.button(str(thread_id)):
+    title = get_thread_title(thread_id)
+    if st.sidebar.button(title, key=str(thread_id)):
         st.session_state["thread_id"] = thread_id
         messages = load_conversation(thread_id)
 
