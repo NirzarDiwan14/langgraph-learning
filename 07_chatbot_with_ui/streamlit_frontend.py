@@ -4,29 +4,71 @@ from langchain_core.messages import HumanMessage
 import uuid
 from uuid import UUID
 
-#utility functions
-def generate_thread_id()-> UUID:
+
+# utility functions
+def generate_thread_id() -> UUID:
     thread_id = uuid.uuid4()
     return thread_id
 
-#Session Setup
+
+def reset_chat():
+    thread_id = generate_thread_id()
+    st.session_state["thread_id"] = thread_id
+    st.session_state["message_history"] = []
+
+
+def add_thread(thread_id):
+    if thread_id not in st.session_state["chat_threads"]:
+        st.session_state["chat_threads"].append(thread_id)
+
+
+def load_conversation(thread_id):
+    return chatbot.get_state(config={"configurable": {"thread_id": thread_id}}).values[
+        "messages"
+    ]
+
+
+# Session Setup
 if "message_history" not in st.session_state:
     st.session_state["message_history"] = []
 
 if "thread_id" not in st.session_state:
     st.session_state["thread_id"] = generate_thread_id()
 
-#Sidebar UI
+if "chat_threads" not in st.session_state:
+    st.session_state["chat_threads"] = []
+
+add_thread(st.session_state["thread_id"])
+
+# Sidebar UI
 st.sidebar.title("LangGraph Chatbot")
-st.sidebar.button("New Chat")
+if st.sidebar.button("New Chat"):
+    add_thread(st.session_state["thread_id"])
+    reset_chat()
 st.sidebar.header("My Conversations")
-st.sidebar.text(st.session_state["thread_idf"])
+
+# st.sidebar.text(st.session_state["thread_id"])
+for thread_id in reversed(st.session_state["chat_threads"]):
+    if st.sidebar.button(str(thread_id)):
+        st.session_state["thread_id"] = thread_id
+        messages = load_conversation(thread_id)
+
+        temp_messages = []
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                role = "user"
+            else:
+                role = "assistant"
+            temp_messages.append({"role": role, "content": msg.content})
+        st.session_state["message_history"] = temp_messages
+
+
 for message in st.session_state["message_history"]:
     with st.chat_message(message["role"]):
         st.text(message["content"])
 
 user_input = st.chat_input("Type here:")
-CONFIG = {"configurable": {"thread_id": st.session_state['thread_id']}}
+CONFIG = {"configurable": {"thread_id": st.session_state["thread_id"]}}
 
 if user_input:
     # first add the user message to history
