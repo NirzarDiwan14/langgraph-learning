@@ -1,5 +1,5 @@
 import streamlit as st
-from langgraph_backend import chatbot,retrieve_all_threads
+from langgraph_backend import chatbot, retrieve_all_threads
 from langchain_core.messages import HumanMessage
 import uuid
 from uuid import UUID
@@ -31,8 +31,6 @@ def load_conversation(thread_id):
 def get_thread_title(thread_id):
     state = chatbot.get_state(config={"configurable": {"thread_id": thread_id}})
     return state.values.get("title", "New Chat")
-
-
 
 
 # Session Setup
