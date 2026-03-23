@@ -1,6 +1,6 @@
 import streamlit as st
 from langgraph_backend import chatbot, retrieve_all_threads
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage,ToolMessage
 import uuid
 from uuid import UUID
 
@@ -87,13 +87,44 @@ if user_input:
         st.text(user_input)
     # first add the assitant message to history
     initial_state = {"messages": [HumanMessage(content=user_input)]}
+    # first add the message to message_history
     with st.chat_message("assistant"):
-        ai_message = st.write_stream(
-            message_chunk.content
-            for message_chunk, metadata in chatbot.stream(
-                initial_state, config=CONFIG, stream_mode="messages"
-            )
+       status_holder = {"box": None}
+
+    def stream_wrapper():
+        for message_chunk, metadata in chatbot.stream(
+            initial_state,
+            config=CONFIG,
+            stream_mode="messages"
+        ):
+            if isinstance(message_chunk, ToolMessage):
+                tool_name = getattr(message_chunk, "name", "tool")
+
+                if status_holder["box"] is None:
+                    status_holder["box"] = st.status(
+                        f"🔧 Using `{tool_name}` ...", expanded=True
+                    )
+                else:
+                    status_holder["box"].update(
+                        label=f"🔧 Using `{tool_name}` ...",
+                        state="running",
+                        expanded=True,
+                    )
+                status_holder["box"].write(message_chunk.content)
+            if isinstance(message_chunk, AIMessage):
+                yield message_chunk.content
+
+
+    ai_message = st.write_stream(stream_wrapper())
+
+    # ✅ finalize status
+    if status_holder["box"] is not None:
+        status_holder["box"].update(
+            label="✅ Tool finished",
+            state="complete",
+            expanded=False
         )
+    #Save assistant state
     st.session_state["message_history"].append(
         {"role": "assistant", "content": ai_message}
     )
