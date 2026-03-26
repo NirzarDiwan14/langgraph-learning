@@ -16,9 +16,11 @@ dependencies = [
     "langchain-mistralai>=1.1.2",
     "langchain-text-splitters>=1.1.1",
     "langgraph>=1.1.2",
+    "langgraph-checkpoint-postgres>=3.0.5",
     "langgraph-checkpoint-sqlite>=3.0.3",
     "langgraph-cli[inmem]>=0.4.18",
     "langsmith>=0.7.20",
+    "psycopg[binary,pool]>=3.3.3",
     "pypdf>=6.9.1",
     "streamlit>=1.55.0",
 ]
